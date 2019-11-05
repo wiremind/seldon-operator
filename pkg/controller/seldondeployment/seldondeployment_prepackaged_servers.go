@@ -74,8 +74,10 @@ func addTFServerContainer(r *ReconcileSeldonDeployment, pu *machinelearningv1alp
 		tfServingContainer = &v1.Container{
 			Name:  constants.TFServingContainerName,
 			Image: "tensorflow/serving:latest",
-			Args: []string{
+			Command: []string{
 				"/usr/bin/tensorflow_model_server",
+			}
+			Args: []string{
 				"--port=2000",
 				"--rest_api_port=2001",
 				"--model_name=" + pu.Name,
