@@ -29,147 +29,150 @@ import (
 
 func addTFServerContainer(r *ReconcileSeldonDeployment, pu *machinelearningv1alpha2.PredictiveUnit, p *machinelearningv1alpha2.PredictorSpec, deploy *appsv1.Deployment) error {
 
-	if *pu.Implementation == machinelearningv1alpha2.TENSORFLOW_SERVER {
+	if *pu.Implementation != machinelearningv1alpha2.TENSORFLOW_SERVER {
+		return nil
+	}
 
-		ty := machinelearningv1alpha2.MODEL
-		pu.Type = &ty
+	ty := machinelearningv1alpha2.MODEL
+	pu.Type = &ty
 
-		if pu.Endpoint == nil {
-			pu.Endpoint = &machinelearningv1alpha2.Endpoint{Type: machinelearningv1alpha2.REST}
-		}
+	if pu.Endpoint == nil {
+		pu.Endpoint = &machinelearningv1alpha2.Endpoint{Type: machinelearningv1alpha2.REST}
+	}
 
-		c := utils.GetContainerForDeployment(deploy, pu.Name)
-		existing := c != nil
-		if !existing {
-			c = &v1.Container{
-				Name: pu.Name,
-				VolumeMounts: []v1.VolumeMount{
-					{
-						Name:      machinelearningv1alpha2.PODINFO_VOLUME_NAME,
-						MountPath: machinelearningv1alpha2.PODINFO_VOLUME_PATH,
-					},
+	c := utils.GetContainerForDeployment(deploy, pu.Name)
+	existing := c != nil
+	if !existing {
+		c = &v1.Container{
+			Name: pu.Name,
+			VolumeMounts: []v1.VolumeMount{
+				{
+					Name:      machinelearningv1alpha2.PODINFO_VOLUME_NAME,
+					MountPath: machinelearningv1alpha2.PODINFO_VOLUME_PATH,
 				},
-			}
-		}
-
-		//Add missing fields
-		utils.SetImageNameForPrepackContainer(pu, c)
-		SetUriParamsForTFServingProxyContainer(pu, c)
-		addContainerDefaults(c)
-
-		// Add container to deployment
-		if !existing {
-			if len(deploy.Spec.Template.Spec.Containers) > 0 {
-				deploy.Spec.Template.Spec.Containers = append(deploy.Spec.Template.Spec.Containers, *c)
-			} else {
-				deploy.Spec.Template.Spec.Containers = []v1.Container{*c}
-			}
-		}
-
-		tfServingContainer := utils.GetContainerForDeployment(deploy, constants.TFServingContainerName)
-		existing = tfServingContainer != nil
-		if !existing {
-			tfServingContainer = &v1.Container{
-				Name:  constants.TFServingContainerName,
-				Image: "tensorflow/serving:latest",
-				Args: []string{
-					"/usr/bin/tensorflow_model_server",
-					"--port=2000",
-					"--rest_api_port=2001",
-					"--model_name=" + pu.Name,
-					"--model_base_path=" + DefaultModelLocalMountPath},
-				ImagePullPolicy: v1.PullIfNotPresent,
-				Ports: []v1.ContainerPort{
-					{
-						ContainerPort: 2000,
-						Protocol:      v1.ProtocolTCP,
-					},
-					{
-						ContainerPort: 2001,
-						Protocol:      v1.ProtocolTCP,
-					},
-				},
-			}
-		}
-
-		addContainerDefaults(tfServingContainer)
-
-		if !existing {
-			deploy.Spec.Template.Spec.Containers = append(deploy.Spec.Template.Spec.Containers, *tfServingContainer)
-		}
-
-		_, err := InjectModelInitializer(deploy, tfServingContainer.Name, pu.ModelURI, pu.ServiceAccountName, pu.EnvSecretRefName, r)
-		if err != nil {
-			return err
+			},
 		}
 	}
+
+	//Add missing fields
+	utils.SetImageNameForPrepackContainer(pu, c)
+	SetUriParamsForTFServingProxyContainer(pu, c)
+	addContainerDefaults(c)
+
+	// Add container to deployment
+	if !existing {
+		if len(deploy.Spec.Template.Spec.Containers) > 0 {
+			deploy.Spec.Template.Spec.Containers = append(deploy.Spec.Template.Spec.Containers, *c)
+		} else {
+			deploy.Spec.Template.Spec.Containers = []v1.Container{*c}
+		}
+	}
+
+	tfServingContainer := utils.GetContainerForDeployment(deploy, constants.TFServingContainerName)
+	existing = tfServingContainer != nil
+	if !existing {
+		tfServingContainer = &v1.Container{
+			Name:  constants.TFServingContainerName,
+			Image: "tensorflow/serving:latest",
+			Args: []string{
+				"/usr/bin/tensorflow_model_server",
+				"--port=2000",
+				"--rest_api_port=2001",
+				"--model_name=" + pu.Name,
+				"--model_base_path=" + DefaultModelLocalMountPath},
+			ImagePullPolicy: v1.PullIfNotPresent,
+			Ports: []v1.ContainerPort{
+				{
+					ContainerPort: 2000,
+					Protocol:      v1.ProtocolTCP,
+				},
+				{
+					ContainerPort: 2001,
+					Protocol:      v1.ProtocolTCP,
+				},
+			},
+		}
+	}
+
+	addContainerDefaults(tfServingContainer)
+
+	if !existing {
+		deploy.Spec.Template.Spec.Containers = append(deploy.Spec.Template.Spec.Containers, *tfServingContainer)
+	}
+
+	_, err := InjectModelInitializer(deploy, tfServingContainer.Name, pu.ModelURI, pu.ServiceAccountName, pu.EnvSecretRefName, r)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
 func addModelDefaultServers(r *ReconcileSeldonDeployment, pu *machinelearningv1alpha2.PredictiveUnit, p *machinelearningv1alpha2.PredictorSpec, deploy *appsv1.Deployment) error {
-	if *pu.Implementation == machinelearningv1alpha2.SKLEARN_SERVER ||
+	if !(*pu.Implementation == machinelearningv1alpha2.SKLEARN_SERVER ||
 		*pu.Implementation == machinelearningv1alpha2.XGBOOST_SERVER ||
-		*pu.Implementation == machinelearningv1alpha2.MLFLOW_SERVER {
+		*pu.Implementation == machinelearningv1alpha2.MLFLOW_SERVER) {
+		return nil
+	}
 
-		ty := machinelearningv1alpha2.MODEL
-		pu.Type = &ty
+	ty := machinelearningv1alpha2.MODEL
+	pu.Type = &ty
 
-		if pu.Endpoint == nil {
-			pu.Endpoint = &machinelearningv1alpha2.Endpoint{Type: machinelearningv1alpha2.REST}
-		}
-		c := utils.GetContainerForDeployment(deploy, pu.Name)
-		existing := c != nil
-		if !existing {
-			c = &v1.Container{
-				Name: pu.Name,
-				VolumeMounts: []v1.VolumeMount{
-					{
-						Name:      machinelearningv1alpha2.PODINFO_VOLUME_NAME,
-						MountPath: machinelearningv1alpha2.PODINFO_VOLUME_PATH,
-					},
+	if pu.Endpoint == nil {
+		pu.Endpoint = &machinelearningv1alpha2.Endpoint{Type: machinelearningv1alpha2.REST}
+	}
+	c := utils.GetContainerForDeployment(deploy, pu.Name)
+	existing := c != nil
+	if !existing {
+		c = &v1.Container{
+			Name: pu.Name,
+			VolumeMounts: []v1.VolumeMount{
+				{
+					Name:      machinelearningv1alpha2.PODINFO_VOLUME_NAME,
+					MountPath: machinelearningv1alpha2.PODINFO_VOLUME_PATH,
 				},
-			}
-
+			},
 		}
 
-		utils.SetImageNameForPrepackContainer(pu, c)
+	}
 
-		// Add parameters envvar - point at mount path because initContainer will download
-		params := pu.Parameters
-		uriParam := machinelearningv1alpha2.Parameter{
-			Name:  "model_uri",
-			Type:  "STRING",
-			Value: DefaultModelLocalMountPath,
-		}
-		params = append(params, uriParam)
-		paramStr, err := json.Marshal(params)
-		if err != nil {
-			return err
-		}
-		addContainerDefaults(c)
+	utils.SetImageNameForPrepackContainer(pu, c)
 
-		if len(params) > 0 {
-			if !utils.HasEnvVar(c.Env, machinelearningv1alpha2.ENV_PREDICTIVE_UNIT_PARAMETERS) {
-				c.Env = append(c.Env, v1.EnvVar{Name: machinelearningv1alpha2.ENV_PREDICTIVE_UNIT_PARAMETERS, Value: string(paramStr)})
-			} else {
-				c.Env = utils.SetEnvVar(c.Env, v1.EnvVar{Name: machinelearningv1alpha2.ENV_PREDICTIVE_UNIT_PARAMETERS, Value: string(paramStr)})
-			}
+	// Add parameters envvar - point at mount path because initContainer will download
+	params := pu.Parameters
+	uriParam := machinelearningv1alpha2.Parameter{
+		Name:  "model_uri",
+		Type:  "STRING",
+		Value: DefaultModelLocalMountPath,
+	}
+	params = append(params, uriParam)
+	paramStr, err := json.Marshal(params)
+	if err != nil {
+		return err
+	}
+	addContainerDefaults(c)
 
-		}
-
-		// Add container to deployment
-		if !existing {
-			if len(deploy.Spec.Template.Spec.Containers) > 0 {
-				deploy.Spec.Template.Spec.Containers = append(deploy.Spec.Template.Spec.Containers, *c)
-			} else {
-				deploy.Spec.Template.Spec.Containers = []v1.Container{*c}
-			}
+	if len(params) > 0 {
+		if !utils.HasEnvVar(c.Env, machinelearningv1alpha2.ENV_PREDICTIVE_UNIT_PARAMETERS) {
+			c.Env = append(c.Env, v1.EnvVar{Name: machinelearningv1alpha2.ENV_PREDICTIVE_UNIT_PARAMETERS, Value: string(paramStr)})
+		} else {
+			c.Env = utils.SetEnvVar(c.Env, v1.EnvVar{Name: machinelearningv1alpha2.ENV_PREDICTIVE_UNIT_PARAMETERS, Value: string(paramStr)})
 		}
 
-		_, err = InjectModelInitializer(deploy, c.Name, pu.ModelURI, pu.ServiceAccountName, pu.EnvSecretRefName, r.Client)
-		if err != nil {
-			return err
+	}
+
+	// Add container to deployment
+	if !existing {
+		if len(deploy.Spec.Template.Spec.Containers) > 0 {
+			deploy.Spec.Template.Spec.Containers = append(deploy.Spec.Template.Spec.Containers, *c)
+		} else {
+			deploy.Spec.Template.Spec.Containers = []v1.Container{*c}
 		}
+	}
+
+	_, err = InjectModelInitializer(deploy, c.Name, pu.ModelURI, pu.ServiceAccountName, pu.EnvSecretRefName, r.Client)
+	if err != nil {
+		return err
 	}
 	return nil
 }
