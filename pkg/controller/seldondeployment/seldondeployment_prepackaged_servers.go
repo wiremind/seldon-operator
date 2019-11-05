@@ -85,10 +85,12 @@ func addTFServerContainer(r *ReconcileSeldonDeployment, pu *machinelearningv1alp
 				{
 					ContainerPort: 2000,
 					Protocol:      v1.ProtocolTCP,
+					Name:          "grpc",
 				},
 				{
 					ContainerPort: 2001,
 					Protocol:      v1.ProtocolTCP,
+					Name:          "rest",
 				},
 			},
 		}
